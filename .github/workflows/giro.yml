@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   run:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       # codice e memoria stanno in un progetto privato: qui si scaricano con un token, niente resta pubblico
