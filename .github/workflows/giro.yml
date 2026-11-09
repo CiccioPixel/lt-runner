@@ -1,6 +1,9 @@
 name: Giro
 
 on:
+  # un giro ogni ora (i minuti dei progetti pubblici sono gratuiti); a mano da Telegram o dall'estensione
+  schedule:
+    - cron: "17 * * * *"
   workflow_dispatch:
     inputs:
       rescan:
