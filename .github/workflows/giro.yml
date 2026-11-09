@@ -1,0 +1,84 @@
+name: Giro
+
+on:
+  workflow_dispatch:
+    inputs:
+      rescan:
+        type: boolean
+        default: false
+      weibo_add:
+        type: string
+        default: ""
+
+permissions: {}
+
+concurrency:
+  group: giro
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # codice e memoria stanno in un progetto privato: qui si scaricano con un token, niente resta pubblico
+      - uses: actions/checkout@v4
+        with:
+          repository: CiccioPixel/leak-tracker
+          token: ${{ secrets.MEM_TOKEN }}
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Copia del browser automatico
+        id: pwcache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ hashFiles('requirements.txt') }}
+      - name: Browser automatico (EPREL, Weibo, Wi-Fi Alliance)
+        run: |
+          if [ "${{ steps.pwcache.outputs.cache-hit }}" = "true" ]; then python -m playwright install-deps chromium; else python -m playwright install --with-deps chromium; fi
+      - name: Copia del giorno prima della lista Google Play
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: play-${{ github.run_id }}
+          restore-keys: play-
+      - run: python bot.py
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SAFETYKOREA_KEY: ${{ secrets.SAFETYKOREA_KEY }}
+          GROQ_WEB_MODEL: groq/compound-mini
+          RESCAN: ${{ inputs.rescan }}
+          WEIBO_ADD: ${{ inputs.weibo_add }}
+          PUBLIC_RUN: "1"
+      - name: Salva la memoria
+        run: |
+          git config user.name "leak-tracker-bot"
+          git config user.email "leak-tracker-bot@users.noreply.github.com"
+          cp state.json "$RUNNER_TEMP/state.json"; cp registry.json "$RUNNER_TEMP/registry.json"
+          [ -f ultimo_giro.txt ] && cp ultimo_giro.txt "$RUNNER_TEMP/ultimo_giro.txt"
+          # riparto dall'ultima versione salvata e unisco l'archivio prodotti: le schede scritte
+          # dall'estensione durante il giro non vanno perse (prima vinceva sempre la copia del bot)
+          for i in 1 2 3 4; do
+            git fetch -q origin main && git reset -q --hard origin/main
+            cp "$RUNNER_TEMP/state.json" state.json
+            cp "$RUNNER_TEMP/registry.json" registry.json
+            git show origin/main:registry.json > "$RUNNER_TEMP/remote.json" 2>/dev/null \
+              && python bot.py --merge-registry "$RUNNER_TEMP/remote.json" registry.json > /dev/null 2>&1
+            [ -f "$RUNNER_TEMP/ultimo_giro.txt" ] && cp "$RUNNER_TEMP/ultimo_giro.txt" ultimo_giro.txt
+            git add state.json registry.json ultimo_giro.txt 2>/dev/null || git add state.json registry.json
+            git diff --cached --quiet && exit 0
+            git commit -q -m "Aggiorna memoria [skip ci]"
+            git push -q origin HEAD:main && exit 0
+            sleep 5
+          done
+          exit 1
