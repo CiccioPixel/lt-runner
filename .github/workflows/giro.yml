@@ -41,6 +41,8 @@ jobs:
           path: ~/.cache/ms-playwright
           key: pw-${{ hashFiles('requirements.txt') }}
       - name: Browser automatico (EPREL, Weibo, Wi-Fi Alliance)
+        continue-on-error: true
+        timeout-minutes: 5
         run: |
           if [ "${{ steps.pwcache.outputs.cache-hit }}" = "true" ]; then python -m playwright install-deps chromium; else python -m playwright install --with-deps chromium; fi
       - name: Copia del giorno prima della lista Google Play
