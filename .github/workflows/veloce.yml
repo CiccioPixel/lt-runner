@@ -1,0 +1,102 @@
+name: Veloce
+
+on:
+  # giro leggero ogni 20 minuti: solo Weibo, Telegram, Bluesky, community e stampa coreana/cinese, blog Naver
+  schedule:
+    - cron: "7,27,47 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: veloce
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+    steps:
+      # se il giro completo sta girando o e' in coda, il veloce salta (le stesse fonti le legge gia' lui)
+      - name: Controlla il giro completo
+        id: chk
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          a=$(gh api "repos/${{ github.repository }}/actions/workflows/giro.yml/runs?status=in_progress" --jq .total_count 2>/dev/null || echo 0)
+          b=$(gh api "repos/${{ github.repository }}/actions/workflows/giro.yml/runs?status=queued" --jq .total_count 2>/dev/null || echo 0)
+          if [ "$a$b" = "00" ]; then echo "go=1" >> "$GITHUB_OUTPUT"; else echo "Giro completo in corso: salto"; fi
+      # codice e memoria stanno in un progetto privato: qui si scaricano con un token, niente resta pubblico
+      - uses: actions/checkout@v4
+        if: steps.chk.outputs.go == '1'
+        with:
+          repository: CiccioPixel/leak-tracker
+          token: ${{ secrets.MEM_TOKEN }}
+          ref: main
+      - uses: actions/setup-python@v5
+        if: steps.chk.outputs.go == '1'
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+        if: steps.chk.outputs.go == '1'
+      - name: Copia del browser automatico
+        if: steps.chk.outputs.go == '1'
+        id: pwcache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ hashFiles('requirements.txt') }}
+      - name: Browser automatico (EPREL, Weibo, Wi-Fi Alliance)
+        if: steps.chk.outputs.go == '1'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: |
+          if [ "${{ steps.pwcache.outputs.cache-hit }}" = "true" ]; then python -m playwright install-deps chromium; else python -m playwright install --with-deps chromium; fi
+      - name: Copia del giorno prima della lista Google Play
+        if: steps.chk.outputs.go == '1'
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: play-${{ github.run_id }}
+          restore-keys: play-
+      - run: python bot.py
+        if: steps.chk.outputs.go == '1'
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          CLOUDFLARE_AI_API_KEY: ${{ secrets.CLOUDFLARE_AI_API_KEY }}
+          SAFETYKOREA_KEY: ${{ secrets.SAFETYKOREA_KEY }}
+          GROQ_WEB_MODEL: groq/compound-mini
+          FAST_RUN: "1"
+          PUBLIC_RUN: "1"
+      - name: Salva la memoria
+        if: steps.chk.outputs.go == '1'
+        run: |
+          git config user.name "leak-tracker-bot"
+          git config user.email "leak-tracker-bot@users.noreply.github.com"
+          cp state.json "$RUNNER_TEMP/state.json"; cp registry.json "$RUNNER_TEMP/registry.json"
+          [ -f ultimo_giro_veloce.txt ] && cp ultimo_giro_veloce.txt "$RUNNER_TEMP/ultimo_giro_veloce.txt"
+          # riparto dall'ultima versione salvata e unisco l'archivio prodotti: le schede scritte
+          # dall'estensione durante il giro non vanno perse (prima vinceva sempre la copia del bot)
+          for i in 1 2 3 4; do
+            git fetch -q origin main && git reset -q --hard origin/main
+            cp "$RUNNER_TEMP/state.json" state.json
+            cp "$RUNNER_TEMP/registry.json" registry.json
+            git show origin/main:registry.json > "$RUNNER_TEMP/remote.json" 2>/dev/null \
+              && python bot.py --merge-registry "$RUNNER_TEMP/remote.json" registry.json > /dev/null 2>&1
+            [ -f "$RUNNER_TEMP/ultimo_giro_veloce.txt" ] && cp "$RUNNER_TEMP/ultimo_giro_veloce.txt" ultimo_giro_veloce.txt
+            git add state.json registry.json ultimo_giro_veloce.txt 2>/dev/null || git add state.json registry.json
+            git diff --cached --quiet && exit 0
+            git commit -q -m "Aggiorna memoria [skip ci]"
+            git push -q origin HEAD:main && exit 0
+            sleep 5
+          done
+          exit 1

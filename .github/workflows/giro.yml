@@ -23,7 +23,19 @@ jobs:
   run:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      actions: read
     steps:
+      # il giro veloce (ogni 20 minuti) e il giro completo non devono girare insieme: si aspetta che finisca
+      - name: Aspetta la fine del giro veloce
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 30); do
+            n=$(gh api "repos/${{ github.repository }}/actions/workflows/veloce.yml/runs?status=in_progress" --jq .total_count 2>/dev/null || echo 0)
+            [ "$n" = "0" ] && exit 0
+            sleep 15
+          done
       # codice e memoria stanno in un progetto privato: qui si scaricano con un token, niente resta pubblico
       - uses: actions/checkout@v4
         with:
