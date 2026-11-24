@@ -84,6 +84,7 @@ jobs:
           git config user.name "leak-tracker-bot"
           git config user.email "leak-tracker-bot@users.noreply.github.com"
           cp state.json "$RUNNER_TEMP/state.json"; cp registry.json "$RUNNER_TEMP/registry.json"
+          [ -f relay/richieste.json ] && cp relay/richieste.json "$RUNNER_TEMP/richieste.json"
           [ -f ultimo_giro_veloce.txt ] && cp ultimo_giro_veloce.txt "$RUNNER_TEMP/ultimo_giro_veloce.txt"
           # riparto dall'ultima versione salvata e unisco l'archivio prodotti: le schede scritte
           # dall'estensione durante il giro non vanno perse (prima vinceva sempre la copia del bot)
@@ -91,6 +92,7 @@ jobs:
             git fetch -q origin main && git reset -q --hard origin/main
             cp "$RUNNER_TEMP/state.json" state.json
             cp "$RUNNER_TEMP/registry.json" registry.json
+            [ -f "$RUNNER_TEMP/richieste.json" ] && mkdir -p relay && cp "$RUNNER_TEMP/richieste.json" relay/richieste.json && git add relay/richieste.json
             git show origin/main:registry.json > "$RUNNER_TEMP/remote.json" 2>/dev/null \
               && python bot.py --merge-registry "$RUNNER_TEMP/remote.json" registry.json > /dev/null 2>&1
             [ -f "$RUNNER_TEMP/ultimo_giro_veloce.txt" ] && cp "$RUNNER_TEMP/ultimo_giro_veloce.txt" ultimo_giro_veloce.txt
