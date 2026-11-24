@@ -25,9 +25,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          a=$(gh api "repos/${{ github.repository }}/actions/workflows/giro.yml/runs?status=in_progress" --jq .total_count 2>/dev/null || echo 0)
-          b=$(gh api "repos/${{ github.repository }}/actions/workflows/giro.yml/runs?status=queued" --jq .total_count 2>/dev/null || echo 0)
-          if [ "$a$b" = "00" ]; then echo "go=1" >> "$GITHUB_OUTPUT"; else echo "Giro completo in corso: salto"; fi
+          a=$(gh api "repos/${{ github.repository }}/actions/workflows/giro.yml/runs?status=in_progress" --jq .total_count 2>&1) || true
+          b=$(gh api "repos/${{ github.repository }}/actions/workflows/giro.yml/runs?status=queued" --jq .total_count 2>&1) || true
+          echo "giro completo: in corso=$a, in coda=$b"
+          if [ "$a" = "0" ] && [ "$b" = "0" ]; then echo "go=1" >> "$GITHUB_OUTPUT"; else echo "Giro completo in corso: salto"; fi
       # codice e memoria stanno in un progetto privato: qui si scaricano con un token, niente resta pubblico
       - uses: actions/checkout@v4
         if: steps.chk.outputs.go == '1'
